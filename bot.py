@@ -144,8 +144,16 @@ async def write_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Xabaringizni yozing:", reply_markup=ReplyKeyboardRemove())
 
 async def call_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("📞 Telefon qilish", url=f"tel:{config['admin_phone']}")]]
-    await update.message.reply_text("Telefon orqali bog'lanish:", reply_markup=InlineKeyboardMarkup(keyboard))
+    phone_number = config['admin_phone'].replace(" ", "")
+    text = (
+        f"📞 Admin raqami: {config['admin_phone']}\n\n"
+        f"<a href='tel:{phone_number}'>📱 Telefon qilish uchun shu yerga bosing</a>"
+    )
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True)
+    )
 
 async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["📞 Admin bilan bog'lanish"], ["ℹ️ Yordam"]]
