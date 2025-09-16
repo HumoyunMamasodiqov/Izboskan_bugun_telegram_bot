@@ -5,13 +5,14 @@ import sqlite3
 import datetime
 import json
 import os
+import re
 
 # === KONFIGURATSIYA ===
 BOT_TOKEN = "8250661516:AAHNwNWH1JWFK83FDCv6juuptqUvAqPNA98"
 ADMIN_CHAT_ID = 7678962106
 CONFIG_FILE = "config.json"
 PRICES_FILE = "prices.json"
-SOCIAL_FILE = "social_links.json"  # Yangi fayl
+SOCIAL_FILE = "social_links.json"
 
 # Log konfiguratsiyasi
 logging.basicConfig(
@@ -25,7 +26,7 @@ def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {"admin_code": "7777", "admin_phone": "+998901234567"}  # default
+    return {"admin_code": "7777", "admin_phone": "+998901234567"}
 
 def save_config(data):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -49,7 +50,7 @@ def load_prices():
             "story": "300$",
             "post": "700$",
             "combo": "500$",
-            "description": "Telegramda reklama qilish narxlari"
+            "description": "Telegramda reklama narxlari"
         },
         "combo": {
             "story": "700$",
@@ -103,6 +104,21 @@ def init_db():
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
     ''')
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        platform TEXT,
+        order_type TEXT,
+        price TEXT,
+        full_name TEXT,
+        phone_number TEXT,
+        order_details TEXT,
+        order_date TIMESTAMP,
+        status TEXT DEFAULT 'pending',
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    ''')
     conn.commit()
     conn.close()
 
@@ -127,6 +143,60 @@ def add_message(user_id, message_text):
     conn.commit()
     conn.close()
     return message_id
+
+def add_order(user_id, platform, order_type, price, full_name, phone_number, order_details):
+    conn = sqlite3.connect('bot.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+    INSERT INTO orders (user_id, platform, order_type, price, full_name, phone_number, order_details, order_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, platform, order_type, price, full_name, phone_number, order_details, datetime.datetime.now()))
+    order_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return order_id
+
+def get_all_orders():
+    conn = sqlite3.connect('bot.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT o.id, u.first_name, u.username, o.platform, o.order_type, o.price, 
+           o.full_name, o.phone_number, o.order_details, o.order_date, o.status
+    FROM orders o
+    JOIN users u ON o.user_id = u.id
+    ORDER BY o.order_date DESC
+    ''')
+    orders = cursor.fetchall()
+    conn.close()
+    return orders
+
+def get_order_by_id(order_id):
+    conn = sqlite3.connect('bot.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT o.id, u.first_name, u.username, o.platform, o.order_type, o.price, 
+           o.full_name, o.phone_number, o.order_details, o.order_date, o.status
+    FROM orders o
+    JOIN users u ON o.user_id = u.id
+    WHERE o.id = ?
+    ''', (order_id,))
+    order = cursor.fetchone()
+    conn.close()
+    return order
+
+def delete_order(order_id):
+    conn = sqlite3.connect('bot.db')
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM orders WHERE id = ?', (order_id,))
+    conn.commit()
+    conn.close()
+
+def delete_all_orders():
+    conn = sqlite3.connect('bot.db')
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM orders')
+    conn.commit()
+    conn.close()
 
 def get_user_id(chat_id):
     conn = sqlite3.connect('bot.db')
@@ -177,24 +247,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
     add_user(chat_id, user.username, user.first_name, user.last_name)
+    
     keyboard = [
         ["📞 Admin bilan bog'lanish"], 
         ["💰 Reklama narxlari"],
+        ["🛒 Reklama sotib olish"],
         ["🌐 Ijtimoiy tarmoqlar"],
         ["ℹ️ Yordam"]
     ]
+    
+    welcome_text = (
+        f"👋 Assalomu alaykum {user.mention_html()}!\n\n"
+        f"🤖 <b>Reklama Botiga</b> xush kelibsiz!\n\n"
+        f"📊 Bizning xizmatlarimiz:\n"
+        f"• Instagram reklama\n"
+        f"• Telegram reklama\n"
+        f"• Kombo reklama paketlar\n\n"
+        f"⬇️ Quyidagi menyulardan birini tanlang:"
+    )
+    
     await update.message.reply_html(
-        f"Assalomu alaykum {user.mention_html()}!\n\nBotga xush kelibsiz.",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        welcome_text,
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     )
 
 async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["✍️ Xabar yozish"], ["📞 Telefon qilish"], ["🔙 Orqaga"]]
-    await update.message.reply_text("Admin bilan bog'lanish:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    await update.message.reply_text(
+        "👨‍💼 Admin bilan bog'lanish:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
 
 async def write_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_message'] = True
-    await update.message.reply_text("Xabaringizni yozing:", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(
+        "📝 Xabaringizni yozing:",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
 async def call_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone_number = config['admin_phone'].replace(" ", "")
@@ -212,10 +301,212 @@ async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         ["📞 Admin bilan bog'lanish"], 
         ["💰 Reklama narxlari"],
+        ["🛒 Reklama sotib olish"],
         ["🌐 Ijtimoiy tarmoqlar"],
         ["ℹ️ Yordam"]
     ]
-    await update.message.reply_text("Asosiy menyu:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    await update.message.reply_text(
+        "🏠 Asosiy menyu:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+
+# === REKLAMA SOTIB OLISH FUNKSIYALARI ===
+async def buy_advertisement(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        ["📸 Instagram", "📨 Telegram"],
+        ["📊 Instagram+Telegram Kombo", "🔙 Orqaga"]
+    ]
+    await update.message.reply_text(
+        "📱 Reklama platformasini tanlang:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+
+async def select_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    prices = load_prices()
+    
+    if "Instagram" in text:
+        context.user_data['selected_platform'] = 'instagram'
+        platform_data = prices['instagram']
+    elif "Telegram" in text:
+        context.user_data['selected_platform'] = 'telegram'
+        platform_data = prices['telegram']
+    elif "Kombo" in text:
+        context.user_data['selected_platform'] = 'combo'
+        platform_data = prices['combo']
+    else:
+        return await update.message.reply_text("❌ Noto'g'ri tanlov!")
+    
+    keyboard = [
+        ["📱 Story", "📋 Post"],
+        ["📊 Story+Post Kombo", "🔙 Orqaga"]
+    ]
+    
+    text = (
+        f"📊 {platform_data['description']}:\n\n"
+        f"• 📱 Story: {platform_data['story']}\n"
+        f"• 📋 Post: {platform_data['post']}\n"
+        f"• 📊 Story+Post: {platform_data['combo']}\n\n"
+        f"👇 Reklama turini tanlang:"
+    )
+    
+    await update.message.reply_text(
+        text,
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+
+async def select_order_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    platform = context.user_data.get('selected_platform')
+    if not platform:
+        return await update.message.reply_text("❌ Platforma tanlanmagan!")
+    
+    prices = load_prices()
+    platform_data = prices[platform]
+    
+    text = update.message.text
+    if "Story" in text and "Post" not in text and "Kombo" not in text:
+        context.user_data['order_type'] = 'story'
+        context.user_data['order_type_display'] = 'Story'
+        context.user_data['price'] = platform_data['story']
+    elif "Post" in text and "Story" not in text and "Kombo" not in text:
+        context.user_data['order_type'] = 'post'
+        context.user_data['order_type_display'] = 'Post'
+        context.user_data['price'] = platform_data['post']
+    elif "Kombo" in text:
+        context.user_data['order_type'] = 'combo'
+        context.user_data['order_type_display'] = 'Story+Post Kombo'
+        context.user_data['price'] = platform_data['combo']
+    else:
+        return await update.message.reply_text("❌ Noto'g'ri tanlov!")
+    
+    context.user_data['waiting_for_full_name'] = True
+    await update.message.reply_text(
+        f"✅ Tanlangan: {platform.capitalize()} - {context.user_data['order_type_display']}\n💰 Narxi: {context.user_data['price']}\n\n👤 Ism va familiyangizni kiriting:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+async def process_full_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['full_name'] = update.message.text
+    context.user_data['waiting_for_full_name'] = False
+    context.user_data['waiting_for_phone'] = True
+    await update.message.reply_text("📱 Telefon raqamingizni kiriting (format: +998901234567):")
+
+async def process_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    phone = update.message.text
+    # Telefon raqamini tekshirish
+    if not re.match(r'^\+998\d{9}$', phone):
+        await update.message.reply_text("❌ Noto'g'ri telefon raqami formati. Iltimos, +998901234567 formatida kiriting.")
+        return
+    
+    context.user_data['phone'] = phone
+    context.user_data['waiting_for_phone'] = False
+    context.user_data['waiting_for_order_details'] = True
+    await update.message.reply_text("📝 Reklama haqida qisqacha ma'lumot kiriting (nima reklama qilmoqchisiz va qaysi sohada):")
+
+async def process_order_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    order_details = update.message.text
+    context.user_data['order_details'] = order_details
+    context.user_data['waiting_for_order_details'] = False
+    
+    # Buyurtma ma'lumotlarini ko'rsatish va tasdiqlash
+    platform = context.user_data.get('selected_platform')
+    order_type = context.user_data.get('order_type_display')
+    price = context.user_data.get('price')
+    full_name = context.user_data.get('full_name')
+    phone = context.user_data.get('phone')
+    
+    order_summary = (
+        f"🛒 <b>Buyurtma xulosasi:</b>\n\n"
+        f"📊 Platforma: {platform.capitalize()}\n"
+        f"📝 Tur: {order_type}\n"
+        f"💰 Narx: {price}\n"
+        f"👤 Ism: {full_name}\n"
+        f"📱 Telefon: {phone}\n"
+        f"📋 Reklama tafsilotlari: {order_details}\n\n"
+        f"✅ Buyurtmani tasdiqlaysizmi?"
+    )
+    
+    keyboard = [["✅ Ha, tasdiqlayman", "❌ Yo'q, bekor qilish"]]
+    await update.message.reply_html(
+        order_summary,
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    context.user_data['waiting_for_confirmation'] = True
+
+async def process_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('waiting_for_confirmation'):
+        return
+    
+    if update.message.text == "✅ Ha, tasdiqlayman":
+        platform = context.user_data.get('selected_platform')
+        order_type = context.user_data.get('order_type')
+        order_type_display = context.user_data.get('order_type_display')
+        price = context.user_data.get('price')
+        full_name = context.user_data.get('full_name')
+        phone = context.user_data.get('phone')
+        order_details = context.user_data.get('order_details')
+        
+        # Buyurtmani bazaga qo'shish
+        user_id = get_user_id(update.effective_chat.id)
+        order_id = add_order(user_id, platform, order_type, price, full_name, phone, order_details)
+        
+        # Adminga xabar yuborish
+        user_info = get_user_info(user_id)
+        user_name = user_info[1] if user_info else "Noma'lum"
+        username = f"@{user_info[2]}" if user_info and user_info[2] else "Yo'q"
+        
+        order_msg = (
+            f"🛒 <b>YANGI BUYURTMA!</b>\n\n"
+            f"🆔 Buyurtma ID: {order_id}\n"
+            f"👤 Mijoz: {full_name}\n"
+            f"📱 Telefon: {phone}\n"
+            f"👥 Foydalanuvchi: {user_name} ({username})\n"
+            f"📊 Platforma: {platform.capitalize()}\n"
+            f"📝 Turi: {order_type_display}\n"
+            f"💰 Narxi: {price}\n"
+            f"📋 Tavsif: {order_details}\n\n"
+            f"⏰ Vaqt: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        
+        await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=order_msg, parse_mode="HTML")
+        
+        # Foydalanuvchiga javob
+        response_text = (
+            f"✅ <b>Buyurtmangiz qabul qilindi!</b>\n\n"
+            f"🆔 Buyurtma ID: {order_id}\n"
+            f"💰 Narx: {price}\n"
+            f"📊 Platforma: {platform.capitalize()}\n"
+            f"📝 Tur: {order_type_display}\n\n"
+            f"📞 Admin tez orada siz bilan bog'lanadi.\n\n"
+            f"☎️ Admin telefon raqami: {config['admin_phone']}\n"
+            
+        )
+        
+        await update.message.reply_html(
+            response_text,
+            reply_markup=ReplyKeyboardMarkup([
+                ["📞 Admin bilan bog'lanish"], 
+                ["💰 Reklama narxlari"],
+                ["🛒 Yangi buyurtma"],
+                ["🌐 Ijtimoiy tarmoqlar"]
+            ], resize_keyboard=True)
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Buyurtma bekor qilindi.",
+            reply_markup=ReplyKeyboardMarkup([
+                ["📞 Admin bilan bog'lanish"], 
+                ["💰 Reklama narxlari"],
+                ["🛒 Yangi buyurtma"],
+                ["🌐 Ijtimoiy tarmoqlar"]
+            ], resize_keyboard=True)
+        )
+    
+    # Foydalanuvchi ma'lumotlarini tozalash
+    keys_to_remove = ['selected_platform', 'order_type', 'order_type_display', 'price', 
+                     'full_name', 'phone', 'order_details', 'waiting_for_confirmation']
+    for key in keys_to_remove:
+        context.user_data.pop(key, None)
 
 # === FOYDALANUVCHI UCHUN REKLAMA NARXLARI FUNKSIYALARI ===
 async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -224,7 +515,7 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ["📊 Instagram+Telegram Kombo", "🔙 Orqaga"]
     ]
     await update.message.reply_text(
-        "Reklama narxlari:",
+        "💰 Reklama narxlari:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
 
@@ -233,10 +524,10 @@ async def show_instagram_prices(update: Update, context: ContextTypes.DEFAULT_TY
     insta = prices['instagram']
     text = (
         f"📸 {insta['description']}:\n\n"
-        f"• Story: {insta['story']}\n"
-        f"• Post: {insta['post']}\n"
-        f"• Story + Post: {insta['combo']}\n\n"
-        f"Batafsil ma'lumot uchun admin bilan bog'laning."
+        f"• 📱 Story: {insta['story']}\n"
+        f"• 📋 Post: {insta['post']}\n"
+        f"• 📊 Story + Post: {insta['combo']}\n\n"
+        f"ℹ️ Batafsil ma'lumot uchun admin bilan bog'laning."
     )
     await update.message.reply_text(text)
 
@@ -245,10 +536,10 @@ async def show_telegram_prices(update: Update, context: ContextTypes.DEFAULT_TYP
     tg = prices['telegram']
     text = (
         f"📨 {tg['description']}:\n\n"
-        f"• Story: {tg['story']}\n"
-        f"• Post: {tg['post']}\n"
-        f"• Story + Post: {tg['combo']}\n\n"
-        f"Batafsil ma'lumot uchun admin bilan bog'laning."
+        f"• 📱 Story: {tg['story']}\n"
+        f"• 📋 Post: {tg['post']}\n"
+        f"• 📊 Story + Post: {tg['combo']}\n\n"
+        f"ℹ️ Batafsil ma'lumot uchun admin bilan bog'laning."
     )
     await update.message.reply_text(text)
 
@@ -257,10 +548,10 @@ async def show_combo_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     combo = prices['combo']
     text = (
         f"📊 {combo['description']}:\n\n"
-        f"• Story: {combo['story']}\n"
-        f"• Post: {combo['post']}\n"
-        f"• Story + Post: {combo['combo']}\n\n"
-        f"Batafsil ma'lumot uchun admin bilan bog'laning."
+        f"• 📱 Story: {combo['story']}\n"
+        f"• 📋 Post: {combo['post']}\n"
+        f"• 📊 Story + Post: {combo['combo']}\n\n"
+        f"ℹ️ Batafsil ma'lumot uchun admin bilan bog'laning."
     )
     await update.message.reply_text(text)
 
@@ -275,7 +566,7 @@ async def show_social_networks(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     
     await update.message.reply_text(
-        "Bizning ijtimoiy tarmoqlarimiz:",
+        "🌐 Bizning ijtimoiy tarmoqlarimiz:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
 
@@ -309,7 +600,6 @@ async def open_website(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # === ADMIN PANEL FUNKSIYALARI ===
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Admin huquqi tekshiruvi
     if not context.user_data.get('admin'):
         context.user_data['waiting_for_admin_code'] = True
         await update.message.reply_text("❌ Siz admin emassiz. Kodni kiriting:")
@@ -317,7 +607,9 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         ["📨 Barcha xabarlar", "🗑️ Xabarlarni tozalash"],
-        ["📬 Javob berish", "⚙️ Reklama narxlarini tahrirlash"],
+        ["📬 Javob berish", "🛒 Buyurtmalarni ko'rish"],
+        ["🗑️ Buyurtmani o'chirish", "🗑️ Barcha buyurtmalarni o'chirish"],
+        ["⚙️ Reklama narxlarini tahrirlash"],
         ["🔗 Ijtimoiy tarmoqlarni tahrirlash"],
         ["📱 Telefon raqamini o'zgartirish", "🔑 Kod almashtirish"],
         ["🔐 Admin paneldan chiqish"]
@@ -329,7 +621,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_admin_code'] = True
-    await update.message.reply_text("Admin kodini kiriting:", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("🔐 Admin kodini kiriting:", reply_markup=ReplyKeyboardRemove())
 
 async def admin_prices_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get('admin'):
@@ -340,9 +632,50 @@ async def admin_prices_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ["📊 Kombo narxini o'zgartirish", "🔙 Admin panel"]
     ]
     await update.message.reply_text(
-        "Reklama narxlari paneli:",
+        "💰 Reklama narxlari paneli:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
+
+# === BUYURTMALARNI BOSHQARISH FUNKSIYALARI ===
+async def view_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('admin'):
+        return await update.message.reply_text("❌ Siz admin emassiz!")
+    
+    orders = get_all_orders()
+    if not orders:
+        return await update.message.reply_text("📭 Buyurtmalar yo'q.")
+    
+    response = "🛒 Barcha buyurtmalar:\n\n"
+    for order in orders[:10]:
+        order_id, first_name, username, platform, order_type, price, full_name, phone, details, date, status = order
+        display_username = f"@{username}" if username else "Noma'lum"
+        status_emoji = "✅" if status == "completed" else "⏳" if status == "pending" else "❌"
+        
+        response += (
+            f"🆔 {order_id} | {status_emoji} {status}\n"
+            f"👤 {full_name} ({first_name} {display_username})\n"
+            f"📱 {phone}\n"
+            f"📊 {platform.capitalize()} - {order_type.capitalize()}\n"
+            f"💰 {price}\n"
+            f"📅 {date}\n"
+            f"────────────────────\n\n"
+        )
+    
+    await update.message.reply_text(response)
+
+async def delete_order_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('admin'):
+        return await update.message.reply_text("❌ Siz admin emassiz!")
+    
+    context.user_data['waiting_for_order_id'] = True
+    await update.message.reply_text("🗑️ O'chirish uchun buyurtma ID sini kiriting:", reply_markup=ReplyKeyboardRemove())
+
+async def delete_all_orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('admin'):
+        return await update.message.reply_text("❌ Siz admin emassiz!")
+    
+    context.user_data['waiting_for_confirm_delete_orders'] = True
+    await update.message.reply_text("⚠️ Barcha buyurtmalarni o'chirishni tasdiqlaysizmi? (Ha/Yo'q)", reply_markup=ReplyKeyboardRemove())
 
 async def change_instagram_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get('admin'):
@@ -353,16 +686,15 @@ async def change_instagram_prices(update: Update, context: ContextTypes.DEFAULT_
     
     text = (
         f"📸 Instagram joriy narxlari:\n\n"
-        f"Tavsif: {insta['description']}\n"
-        f"1. Story: {insta['story']}\n"
-        f"2. Post: {insta['post']}\n"
-        f"3. Story + Post: {insta['combo']}\n\n"
+        f"📝 Tavsif: {insta['description']}\n"
+        f"1. 📱 Story: {insta['story']}\n"
+        f"2. 📋 Post: {insta['post']}\n"
+        f"3. 📊 Story + Post: {insta['combo']}\n\n"
         f"Qaysi narxni o'zgartirmoqchisiz?"
     )
     
     context.user_data['editing_platform'] = 'instagram'
     
-    # Narx turini tanlash uchun keyboard
     keyboard = [
         ["📝 Tavsifni o'zgartirish", "📱 Story narxini o'zgartirish"],
         ["📋 Post narxini o'zgartirish", "📊 Kombo narxini o'zgartirish"],
@@ -383,16 +715,15 @@ async def change_telegram_prices(update: Update, context: ContextTypes.DEFAULT_T
     
     text = (
         f"📨 Telegram joriy narxlari:\n\n"
-        f"Tavsif: {tg['description']}\n"
-        f"1. Story: {tg['story']}\n"
-        f"2. Post: {tg['post']}\n"
-        f"3. Story + Post: {tg['combo']}\n\n"
+        f"📝 Tavsif: {tg['description']}\n"
+        f"1. 📱 Story: {tg['story']}\n"
+        f"2. 📋 Post: {tg['post']}\n"
+        f"3. 📊 Story + Post: {tg['combo']}\n\n"
         f"Qaysi narxni o'zgartirmoqchisiz?"
     )
     
     context.user_data['editing_platform'] = 'telegram'
     
-    # Narx turini tanlash uchun keyboard
     keyboard = [
         ["📝 Tavsifni o'zgartirish", "📱 Story narxini o'zgartirish"],
         ["📋 Post narxini o'zgartirish", "📊 Kombo narxini o'zgartirish"],
@@ -413,16 +744,15 @@ async def change_combo_prices(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     text = (
         f"📊 Kombo joriy narxlari:\n\n"
-        f"Tavsif: {combo['description']}\n"
-        f"1. Story: {combo['story']}\n"
-        f"2. Post: {combo['post']}\n"
-        f"3. Story + Post: {combo['combo']}\n\n"
+        f"📝 Tavsif: {combo['description']}\n"
+        f"1. 📱 Story: {combo['story']}\n"
+        f"2. 📋 Post: {combo['post']}\n"
+        f"3. 📊 Story + Post: {combo['combo']}\n\n"
         f"Qaysi narxni o'zgartirmoqchisiz?"
     )
     
     context.user_data['editing_platform'] = 'combo'
     
-    # Narx turini tanlash uchun keyboard
     keyboard = [
         ["📝 Tavsifni o'zgartirish", "📱 Story narxini o'zgartirish"],
         ["📋 Post narxini o'zgartirish", "📊 Kombo narxini o'zgartirish"],
@@ -437,7 +767,7 @@ async def change_combo_prices(update: Update, context: ContextTypes.DEFAULT_TYPE
 # === IJTIMOIY TARMOQLARNI TAHRIRLASH FUNKSIYALARI ===
 async def edit_social_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get('admin'):
-        return await update.message.reply_text("❌ Siz admin emassiz!")
+        return await update.message.reppy_text("❌ Siz admin emassiz!")
     
     social_links = load_social_links()
     
@@ -528,9 +858,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (f"📩 Yangi xabar!\n\n👤 {user_name}\n📱 {username}\n🆔 ID: {message_id}\n📝 {user_message}")
         await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=msg)
 
-        await update.message.reply_text("✅ Xabaringiz yuborildi.", reply_markup=ReplyKeyboardMarkup([["📞 Admin bilan bog'lanish"], ["💰 Reklama narxlari"], ["🌐 Ijtimoiy tarmoqlar"], ["ℹ️ Yordam"]], resize_keyboard=True))
+        await update.message.reply_text("✅ Xabaringiz yuborildi.", reply_markup=ReplyKeyboardMarkup([["📞 Admin bilan bog'lanish"], ["💰 Reklama narxlari"], ["🛒 Reklama sotib olish"], ["🌐 Ijtimoiy tarmoqlar"], ["ℹ️ Yordam"]], resize_keyboard=True))
         user_data['waiting_for_message'] = False
         return
+
+    # Ism va familiya kiritish
+    if user_data.get('waiting_for_full_name'):
+        await process_full_name(update, context)
+        return
+
+    # Telefon raqam kiritish
+    if user_data.get('waiting_for_phone'):
+        await process_phone(update, context)
+        return
+
+    # Buyurtma tafsilotlari kiritish
+    if user_data.get('waiting_for_order_details'):
+        await process_order_details(update, context)
+        return
+
+    # Buyurtma tasdiqlash
+    if user_data.get('waiting_for_confirmation'):
+        await process_confirmation(update, context)
+        return
+
+    # Buyurtma ID sini kutish (o'chirish uchun)
+    if user_data.get('waiting_for_order_id'):
+        try:
+            order_id = int(update.message.text)
+            order = get_order_by_id(order_id)
+            if order:
+                delete_order(order_id)
+                await update.message.reply_text(f"✅ {order_id} ID li buyurtma o'chirildi.")
+            else:
+                await update.message.reply_text("❌ Buyurtma topilmadi!")
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID format!")
+        user_data.pop('waiting_for_order_id', None)
+        return await admin_panel(update, context)
+
+    # Barcha buyurtmalarni o'chirish tasdiqlash
+    if user_data.get('waiting_for_confirm_delete_orders'):
+        if update.message.text.lower() == 'ha':
+            delete_all_orders()
+            await update.message.reply_text("✅ Barcha buyurtmalar o'chirildi.")
+        else:
+            await update.message.reply_text("❌ Buyurtmalarni o'chirish bekor qilindi.")
+        user_data.pop('waiting_for_confirm_delete_orders', None)
+        return await admin_panel(update, context)
 
     # Admin javob berish jarayoni
     if user_data.get('waiting_for_reply_id'):
@@ -595,7 +970,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_data.get('waiting_for_new_phone'):
         new_phone = update.message.text
         # Telefon raqamini tekshirish
-        if not new_phone.startswith('+') or not new_phone[1:].isdigit():
+        if not re.match(r'^\+998\d{9}$', new_phone):
             await update.message.reply_text("❌ Noto'g'ri telefon raqami formati. Iltimos, +998901234567 formatida kiriting.")
             return
         
@@ -771,10 +1146,19 @@ async def change_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("🔓 Admin paneldan chiqdingiz.", reply_markup=ReplyKeyboardMarkup([["📞 Admin bilan bog'lanish"], ["💰 Reklama narxlari"], ["🌐 Ijtimoiy tarmoqlar"], ["ℹ️ Yordam"]], resize_keyboard=True))
+    await update.message.reply_text("🔓 Admin paneldan chiqdingiz.", reply_markup=ReplyKeyboardMarkup([["📞 Admin bilan bog'lanish"], ["💰 Reklama narxlari"], ["🛒 Reklama sotib olish"], ["🌐 Ijtimoiy tarmoqlar"], ["ℹ️ Yordam"]], resize_keyboard=True))
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📖 Yordam:\n📞 Admin bilan bog'lanish\n💰 Reklama narxlari\n🌐 Ijtimoiy tarmoqlar\nℹ️ Yordam\n🔑 Admin panel: /admin")
+    help_text = (
+        "📖 <b>Yordam</b>\n\n"
+        "📞 <b>Admin bilan bog'lanish</b> - Administratorga xabar yuborish yoki telefon qilish\n"
+        "💰 <b>Reklama narxlari</b> - Instagram, Telegram va Kombo reklama narxlari\n"
+        "🛒 <b>Reklama sotib olish</b> - Yangi reklama buyurtma berish\n"
+        "🌐 <b>Ijtimoiy tarmoqlar</b> - Bizning ijtimoiy tarmoqdagi sahifalarimiz\n"
+        "🔑 <b>Admin panel</b> - /admin buyrug'i orqali admin paneliga kirish\n\n"
+        "ℹ️ Qo'shimcha ma'lumot olish uchun admin bilan bog'laning."
+    )
+    await update.message.reply_html(help_text)
 
 def main():
     init_db()
@@ -790,9 +1174,15 @@ def main():
     application.add_handler(MessageHandler(filters.Regex("^📞 Telefon qilish$"), call_admin))
     application.add_handler(MessageHandler(filters.Regex("^🔙 Orqaga$"), back_to_main))
     application.add_handler(MessageHandler(filters.Regex("^💰 Reklama narxlari$"), show_prices))
-    application.add_handler(MessageHandler(filters.Regex("^📸 Instagram$"), show_instagram_prices))
-    application.add_handler(MessageHandler(filters.Regex("^📨 Telegram$"), show_telegram_prices))
-    application.add_handler(MessageHandler(filters.Regex("^📊 Instagram\+Telegram Kombo$"), show_combo_prices))
+    application.add_handler(MessageHandler(filters.Regex("^📸 Instagram$"), select_platform))
+    application.add_handler(MessageHandler(filters.Regex("^📨 Telegram$"), select_platform))
+    application.add_handler(MessageHandler(filters.Regex("^📊 Instagram\+Telegram Kombo$"), select_platform))
+    application.add_handler(MessageHandler(filters.Regex("^📱 Story$"), select_order_type))
+    application.add_handler(MessageHandler(filters.Regex("^📋 Post$"), select_order_type))
+    application.add_handler(MessageHandler(filters.Regex("^📊 Story\+Post Kombo$"), select_order_type))
+    application.add_handler(MessageHandler(filters.Regex("^✅ Ha, tasdiqlayman$"), process_confirmation))
+    application.add_handler(MessageHandler(filters.Regex("^❌ Yo'q, bekor qilish$"), process_confirmation))
+    application.add_handler(MessageHandler(filters.Regex("^🛒 Reklama sotib olish$"), buy_advertisement))
     application.add_handler(MessageHandler(filters.Regex("^🌐 Ijtimoiy tarmoqlar$"), show_social_networks))
     application.add_handler(MessageHandler(filters.Regex("^📲 Telegram$"), open_telegram))
     application.add_handler(MessageHandler(filters.Regex("^📷 Instagram$"), open_instagram))
@@ -803,6 +1193,9 @@ def main():
     application.add_handler(MessageHandler(filters.Regex("^📨 Barcha xabarlar$"), view_messages))
     application.add_handler(MessageHandler(filters.Regex("^🗑️ Xabarlarni tozalash$"), delete_messages))
     application.add_handler(MessageHandler(filters.Regex("^📬 Javob berish$"), reply_command))
+    application.add_handler(MessageHandler(filters.Regex("^🛒 Buyurtmalarni ko'rish$"), view_orders))
+    application.add_handler(MessageHandler(filters.Regex("^🗑️ Buyurtmani o'chirish$"), delete_order_command))
+    application.add_handler(MessageHandler(filters.Regex("^🗑️ Barcha buyurtmalarni o'chirish$"), delete_all_orders_command))
     application.add_handler(MessageHandler(filters.Regex("^⚙️ Reklama narxlarini tahrirlash$"), admin_prices_panel))
     application.add_handler(MessageHandler(filters.Regex("^🔗 Ijtimoiy tarmoqlarni tahrirlash$"), edit_social_links))
     application.add_handler(MessageHandler(filters.Regex("^📲 Telegram linkini o'zgartirish$"), change_telegram_link))
@@ -824,7 +1217,7 @@ def main():
     application.add_handler(MessageHandler(filters.Regex("^📊 Kombo narxini o'zgartirish$"), handle_message))
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Bot ishga tushdi...")
+    print("🤖 Bot ishga tushdi...")
     application.run_polling()
 
 if __name__ == '__main__':
