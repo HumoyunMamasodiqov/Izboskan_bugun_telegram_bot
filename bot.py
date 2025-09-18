@@ -347,7 +347,7 @@ async def select_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• 📱 Story: {platform_data['story']}\n"
         f"• 📋 Post: {platform_data['post']}\n"
         f"• 📊 Story+Post: {platform_data['combo']}\n\n"
-        f"👇 Reklama turini tanlang:"
+        f"👇 Buyurtma berish uchun quyidagi reklama turini tanlang:"
     )
     
     await update.message.reply_text(
@@ -1086,7 +1086,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=ReplyKeyboardMarkup([["🔙 Admin panel"]], resize_keyboard=True)
             )
         
-        # Foydalanuvchi ma'lumotlarini tozalash
         user_data.pop('editing_platform', None)
         user_data.pop('editing_price_type', None)
         user_data.pop('waiting_for_new_price', None)
@@ -1168,7 +1167,7 @@ def main():
     application.add_handler(CommandHandler("reply", reply_command))
     application.add_handler(CommandHandler("help", help_command))
 
-    # Foydalanuvchi handlerlari
+
     application.add_handler(MessageHandler(filters.Regex("^📞 Admin bilan bog'lanish$"), contact_admin))
     application.add_handler(MessageHandler(filters.Regex("^✍️ Xabar yozish$"), write_message))
     application.add_handler(MessageHandler(filters.Regex("^📞 Telefon qilish$"), call_admin))
