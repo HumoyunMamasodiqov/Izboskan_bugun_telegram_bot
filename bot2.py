@@ -328,27 +328,55 @@ async def select_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "Instagram" in text:
         context.user_data['selected_platform'] = 'instagram'
         platform_data = prices['instagram']
+        # Instagram uchun standart tugmalar
+        keyboard = [
+            ["📱 Story", "📋 Post"],
+            ["📊 Story+Post Kombo", "🔙 Orqaga"]
+        ]
+        
+        text = (
+            f"📊 {platform_data['description']}:\n\n"
+            f"• 📱 Story: {platform_data['story']}\n"
+            f"• 📋 Post: {platform_data['post']}\n"
+            f"• 📊 Story+Post: {platform_data['combo']}\n\n"
+            f"👇 Buyurtma berish uchun quyidagi reklama turini tanlang:"
+        )
+        
     elif "Telegram" in text:
         context.user_data['selected_platform'] = 'telegram'
         platform_data = prices['telegram']
+        # Telegram uchun maxsus tugmalar
+        keyboard = [
+            ["📨 Telegram reklama (1 oylik)", "📨 Telegram reklama (1 kunlik)"],
+            ["🏠🚗 Uy+Mashina reklamasi", "🔙 Orqaga"]
+        ]
+        
+        text = (
+            f"📊 {platform_data['description']}:\n\n"
+            f"• 📨 Telegram reklama (1 oylik): {platform_data['story']}\n"
+            f"• 📨 Telegram reklama (1 kunlik): {platform_data['post']}\n"
+            f"• 🏠🚗 Uy+Mashina reklamasi: {platform_data['combo']}\n\n"
+            f"👇 Buyurtma berish uchun quyidagi reklama turini tanlang:"
+        )
+        
     elif "Kombo" in text:
         context.user_data['selected_platform'] = 'combo'
         platform_data = prices['combo']
+        # Kombo uchun standart tugmalar
+        keyboard = [
+            ["📱 Story", "📋 Post"],
+            ["📊 Story+Post Kombo", "🔙 Orqaga"]
+        ]
+        
+        text = (
+            f"📊 {platform_data['description']}:\n\n"
+            f"• 📱 Story: {platform_data['story']}\n"
+            f"• 📋 Post: {platform_data['post']}\n"
+            f"• 📊 Story+Post: {platform_data['combo']}\n\n"
+            f"👇 Buyurtma berish uchun quyidagi reklama turini tanlang:"
+        )
     else:
         return await update.message.reply_text("❌ Noto'g'ri tanlov!")
-    
-    keyboard = [
-        ["📱 Story", "📋 Post"],
-        ["📊 Story+Post Kombo", "🔙 Orqaga"]
-    ]
-    
-    text = (
-        f"📊 {platform_data['description']}:\n\n"
-        f"• 📱 Story: {platform_data['story']}\n"
-        f"• 📋 Post: {platform_data['post']}\n"
-        f"• 📊 Story+Post: {platform_data['combo']}\n\n"
-        f"👇 Buyurtma berish uchun quyidagi reklama turini tanlang:"
-    )
     
     await update.message.reply_text(
         text,
@@ -364,20 +392,40 @@ async def select_order_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     platform_data = prices[platform]
     
     text = update.message.text
-    if "Story" in text and "Post" not in text and "Kombo" not in text:
-        context.user_data['order_type'] = 'story'
-        context.user_data['order_type_display'] = 'Story'
-        context.user_data['price'] = platform_data['story']
-    elif "Post" in text and "Story" not in text and "Kombo" not in text:
-        context.user_data['order_type'] = 'post'
-        context.user_data['order_type_display'] = 'Post'
-        context.user_data['price'] = platform_data['post']
-    elif "Kombo" in text:
-        context.user_data['order_type'] = 'combo'
-        context.user_data['order_type_display'] = 'Story+Post Kombo'
-        context.user_data['price'] = platform_data['combo']
+    
+    if platform == 'telegram':
+        # Telegram uchun maxsus order turlari
+        if "Telegram reklama (1 oylik)" in text:
+            context.user_data['order_type'] = 'story'
+            context.user_data['order_type_display'] = 'Telegram reklama (1 oylik)'
+            context.user_data['price'] = platform_data['story']
+        elif "Telegram reklama (1 kunlik)" in text:
+            context.user_data['order_type'] = 'post'
+            context.user_data['order_type_display'] = 'Telegram reklama (1 kunlik)'
+            context.user_data['price'] = platform_data['post']
+        elif "Uy+Mashina reklamasi" in text:
+            context.user_data['order_type'] = 'combo'
+            context.user_data['order_type_display'] = 'Uy+Mashina reklamasi'
+            context.user_data['price'] = platform_data['combo']
+        else:
+            return await update.message.reply_text("❌ Noto'g'ri tanlov!")
+    
     else:
-        return await update.message.reply_text("❌ Noto'g'ri tanlov!")
+        # Instagram va Kombo uchun standart order turlari
+        if "Story" in text and "Post" not in text and "Kombo" not in text:
+            context.user_data['order_type'] = 'story'
+            context.user_data['order_type_display'] = 'Story'
+            context.user_data['price'] = platform_data['story']
+        elif "Post" in text and "Story" not in text and "Kombo" not in text:
+            context.user_data['order_type'] = 'post'
+            context.user_data['order_type_display'] = 'Post'
+            context.user_data['price'] = platform_data['post']
+        elif "Kombo" in text:
+            context.user_data['order_type'] = 'combo'
+            context.user_data['order_type_display'] = 'Story+Post Kombo'
+            context.user_data['price'] = platform_data['combo']
+        else:
+            return await update.message.reply_text("❌ Noto'g'ri tanlov!")
     
     context.user_data['waiting_for_full_name'] = True
     await update.message.reply_text(
@@ -536,9 +584,9 @@ async def show_telegram_prices(update: Update, context: ContextTypes.DEFAULT_TYP
     tg = prices['telegram']
     text = (
         f"📨 {tg['description']}:\n\n"
-        f"• 📱 post 1 oylik: {tg['story']}\n"
-        f"• 📋 1 Martalik post: {tg['post']}\n"
-        f"• 📊 uy va mashinalar  {tg['combo']}\n\n"
+        f"• 📨 Telegram reklama (1 oylik): {tg['story']}\n"
+        f"• 📨 Telegram reklama (1 kunlik): {tg['post']}\n"
+        f"• 🏠🚗 Uy+Mashina reklamasi: {tg['combo']}\n\n"
         f"ℹ️ Batafsil ma'lumot uchun admin bilan bog'laning."
     )
     await update.message.reply_text(text)
@@ -698,7 +746,7 @@ async def change_instagram_prices(update: Update, context: ContextTypes.DEFAULT_
     keyboard = [
         ["📝 Tavsifni o'zgartirish", "📱 Story narxini o'zgartirish"],
         ["📋 Post narxini o'zgartirish", "📊 Kombo narxini o'zgartirish"],
-        ["🔙 Orqaga"]
+        ["🔙 Admin panel"]
     ]
     
     await update.message.reply_text(
@@ -716,18 +764,18 @@ async def change_telegram_prices(update: Update, context: ContextTypes.DEFAULT_T
     text = (
         f"📨 Telegram joriy narxlari:\n\n"
         f"📝 Tavsif: {tg['description']}\n"
-        f"1. 📱 Story: {tg['story']}\n"
-        f"2. 📋 Post: {tg['post']}\n"
-        f"3. 📊 Story + Post: {tg['combo']}\n\n"
+        f"1. 📨 Telegram reklama (1 oylik): {tg['story']}\n"
+        f"2. 📨 Telegram reklama (1 kunlik): {tg['post']}\n"
+        f"3. 🏠🚗 Uy+Mashina reklamasi: {tg['combo']}\n\n"
         f"Qaysi narxni o'zgartirmoqchisiz?"
     )
     
     context.user_data['editing_platform'] = 'telegram'
     
     keyboard = [
-        ["📝 Tavsifni o'zgartirish", "📱 Story narxini o'zgartirish"],
-        ["📋 Post narxini o'zgartirish", "📊 Kombo narxini o'zgartirish"],
-        ["🔙 Orqaga"]
+        ["📝 Tavsifni o'zgartirish", "📨 Telegram reklama (1 oylik) narxini o'zgartirish"],
+        ["📨 Telegram reklama (1 kunlik) narxini o'zgartirish", "🏠🚗 Uy+Mashina reklamasi narxini o'zgartirish"],
+        ["🔙 Admin panel"]
     ]
     
     await update.message.reply_text(
@@ -756,7 +804,7 @@ async def change_combo_prices(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard = [
         ["📝 Tavsifni o'zgartirish", "📱 Story narxini o'zgartirish"],
         ["📋 Post narxini o'zgartirish", "📊 Kombo narxini o'zgartirish"],
-        ["🔙 Orqaga"]
+        ["🔙 Admin panel"]
     ]
     
     await update.message.reply_text(
@@ -767,7 +815,7 @@ async def change_combo_prices(update: Update, context: ContextTypes.DEFAULT_TYPE
 # === IJTIMOIY TARMOQLARNI TAHRIRLASH FUNKSIYALARI ===
 async def edit_social_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get('admin'):
-        return await update.message.reppy_text("❌ Siz admin emassiz!")
+        return await update.message.reply_text("❌ Siz admin emassiz!")
     
     social_links = load_social_links()
     
@@ -1029,40 +1077,68 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Story narxini o'zgartirish
-        elif update.message.text == "📱 Story narxini o'zgartirish":
-            user_data['editing_price_type'] = 'story'
-            user_data['waiting_for_new_price'] = True
-            await update.message.reply_text(
-                f"Joriy story narxi: {prices[platform]['story']}\nYangi narxni kiriting:",
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return
+        # Instagram va Kombo uchun standart narx turlari
+        elif platform in ['instagram', 'combo']:
+            if update.message.text == "📱 Story narxini o'zgartirish":
+                user_data['editing_price_type'] = 'story'
+                user_data['waiting_for_new_price'] = True
+                await update.message.reply_text(
+                    f"Joriy story narxi: {prices[platform]['story']}\nYangi narxni kiriting:",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                return
+            
+            elif update.message.text == "📋 Post narxini o'zgartirish":
+                user_data['editing_price_type'] = 'post'
+                user_data['waiting_for_new_price'] = True
+                await update.message.reply_text(
+                    f"Joriy post narxi: {prices[platform]['post']}\nYangi narxni kiriting:",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                return
+            
+            elif update.message.text == "📊 Kombo narxini o'zgartirish":
+                user_data['editing_price_type'] = 'combo'
+                user_data['waiting_for_new_price'] = True
+                await update.message.reply_text(
+                    f"Joriy kombo narxi: {prices[platform]['combo']}\nYangi narxni kiriting:",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                return
         
-        # Post narxini o'zgartirish
-        elif update.message.text == "📋 Post narxini o'zgartirish":
-            user_data['editing_price_type'] = 'post'
-            user_data['waiting_for_new_price'] = True
-            await update.message.reply_text(
-                f"Joriy post narxi: {prices[platform]['post']}\nYangi narxni kiriting:",
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return
-        
-        # Kombo narxini o'zgartirish
-        elif update.message.text == "📊 Kombo narxini o'zgartirish":
-            user_data['editing_price_type'] = 'combo'
-            user_data['waiting_for_new_price'] = True
-            await update.message.reply_text(
-                f"Joriy kombo narxi: {prices[platform]['combo']}\nYangi narxni kiriting:",
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return
+        # Telegram uchun maxsus narx turlari
+        elif platform == 'telegram':
+            if update.message.text == "📨 Telegram reklama (1 oylik) narxini o'zgartirish":
+                user_data['editing_price_type'] = 'story'
+                user_data['waiting_for_new_price'] = True
+                await update.message.reply_text(
+                    f"Joriy Telegram reklama (1 oylik) narxi: {prices[platform]['story']}\nYangi narxni kiriting:",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                return
+            
+            elif update.message.text == "📨 Telegram reklama (1 kunlik) narxini o'zgartirish":
+                user_data['editing_price_type'] = 'post'
+                user_data['waiting_for_new_price'] = True
+                await update.message.reply_text(
+                    f"Joriy Telegram reklama (1 kunlik) narxi: {prices[platform]['post']}\nYangi narxni kiriting:",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                return
+            
+            elif update.message.text == "🏠🚗 Uy+Mashina reklamasi narxini o'zgartirish":
+                user_data['editing_price_type'] = 'combo'
+                user_data['waiting_for_new_price'] = True
+                await update.message.reply_text(
+                    f"Joriy Uy+Mashina reklamasi narxi: {prices[platform]['combo']}\nYangi narxni kiriting:",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                return
         
         # Orqaga qaytish
-        elif update.message.text == "🔙 Orqaga":
+        elif update.message.text == "🔙 Admin panel":
             user_data.pop('editing_platform', None)
-            return await admin_prices_panel(update, context)
+            return await admin_panel(update, context)
     
     # Yangi narxni o'qish
     if user_data.get('waiting_for_new_price'):
@@ -1075,16 +1151,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prices[platform][price_type] = new_value
         save_prices(prices)
         
-        if price_type == 'description':
-            await update.message.reply_text(
-                f"✅ {platform.capitalize()}ning tavsifi muvaffaqiyatli o'zgartirildi.",
-                reply_markup=ReplyKeyboardMarkup([["🔙 Admin panel"]], resize_keyboard=True)
-            )
-        else:
-            await update.message.reply_text(
-                f"✅ {platform.capitalize()}ning {price_type} narxi {new_value} ga o'zgartirildi.",
-                reply_markup=ReplyKeyboardMarkup([["🔙 Admin panel"]], resize_keyboard=True)
-            )
+        # Admin panelga qaytish
+        await update.message.reply_text(
+            f"✅ Narx muvaffaqiyatli o'zgartirildi!",
+            reply_markup=ReplyKeyboardMarkup([["🔙 Admin panel"]], resize_keyboard=True)
+        )
         
         user_data.pop('editing_platform', None)
         user_data.pop('editing_price_type', None)
@@ -1179,6 +1250,9 @@ def main():
     application.add_handler(MessageHandler(filters.Regex("^📱 Story$"), select_order_type))
     application.add_handler(MessageHandler(filters.Regex("^📋 Post$"), select_order_type))
     application.add_handler(MessageHandler(filters.Regex("^📊 Story\+Post Kombo$"), select_order_type))
+    application.add_handler(MessageHandler(filters.Regex("^📨 Telegram reklama \(1 oylik\)$"), select_order_type))
+    application.add_handler(MessageHandler(filters.Regex("^📨 Telegram reklama \(1 kunlik\)$"), select_order_type))
+    application.add_handler(MessageHandler(filters.Regex("^🏠🚗 Uy\+Mashina reklamasi$"), select_order_type))
     application.add_handler(MessageHandler(filters.Regex("^✅ Ha, tasdiqlayman$"), process_confirmation))
     application.add_handler(MessageHandler(filters.Regex("^❌ Yo'q, bekor qilish$"), process_confirmation))
     application.add_handler(MessageHandler(filters.Regex("^🛒 Reklama sotib olish$"), buy_advertisement))
@@ -1214,6 +1288,9 @@ def main():
     application.add_handler(MessageHandler(filters.Regex("^📱 Story narxini o'zgartirish$"), handle_message))
     application.add_handler(MessageHandler(filters.Regex("^📋 Post narxini o'zgartirish$"), handle_message))
     application.add_handler(MessageHandler(filters.Regex("^📊 Kombo narxini o'zgartirish$"), handle_message))
+    application.add_handler(MessageHandler(filters.Regex("^📨 Telegram reklama \(1 oylik\) narxini o'zgartirish$"), handle_message))
+    application.add_handler(MessageHandler(filters.Regex("^📨 Telegram reklama \(1 kunlik\) narxini o'zgartirish$"), handle_message))
+    application.add_handler(MessageHandler(filters.Regex("^🏠🚗 Uy\+Mashina reklamasi narxini o'zgartirish$"), handle_message))
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("🤖 Bot ishga tushdi...")
